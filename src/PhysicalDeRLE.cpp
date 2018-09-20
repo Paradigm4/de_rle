@@ -172,7 +172,7 @@ DeRLEArray::DeRLEArray(std::shared_ptr<Array> input,
     _query = query;
 }
 
-/*
+/* OLD Method from materialize() operator
 void DeRLEArray::materialize(const std::shared_ptr<Query>& query,
                                     MemChunk& materializedChunk,
                                     ConstChunk const& chunk)
@@ -216,7 +216,7 @@ void DeRLEArray::materialize(const std::shared_ptr<Query>& query,
     hdr->_magic = RLE_PAYLOAD_MAGIC;
     hdr->_nSegs = 1;
     hdr->_elemSize = attrSize;
-    hdr->_dataSize = dataSize + 5;
+    hdr->_dataSize = dataSize;
     hdr->_varOffs = 0;
     hdr->_isBoolean = 0;
     ::memset(&hdr->_pad[0], 0, sizeof(hdr->_pad));
@@ -231,6 +231,7 @@ void DeRLEArray::materialize(const std::shared_ptr<Query>& query,
     {
         Value const& v = src->getItem();
         char const* d = reinterpret_cast<char*> (v.data());
+        //TODO: this fails if v is null
         ::memcpy(dataPtr, d, attrSize);
         dataPtr = dataPtr + attrSize;
         ++(*src);
