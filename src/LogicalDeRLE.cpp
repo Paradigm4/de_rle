@@ -23,7 +23,7 @@
 * END_COPYRIGHT
 */
 
-#include <query/Operator.h>
+#include <query/LogicalOperator.h>
 
 using std::shared_ptr;
 namespace scidb
@@ -34,8 +34,16 @@ class LogicalDeRLE : public  LogicalOperator
 public:
     LogicalDeRLE(const std::string& logicalName, const std::string& alias):
         LogicalOperator(logicalName, alias)
+    { }
+
+    static PlistSpec const* makePlistSpec()
     {
-        ADD_PARAM_INPUT();
+        static PlistSpec argSpec {
+            { "", // positionals
+              RE(PP(PLACEHOLDER_INPUT))
+            }
+        };
+        return &argSpec;
     }
 
     ArrayDesc inferSchema(std::vector< ArrayDesc> schemas, shared_ptr< Query> query)

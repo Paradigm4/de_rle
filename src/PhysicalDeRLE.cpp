@@ -37,14 +37,12 @@
 #include <query/TypeSystem.h>
 #include <query/FunctionDescription.h>
 #include <query/FunctionLibrary.h>
-#include <query/Operator.h>
+#include <query/PhysicalOperator.h>
 #include <query/TypeSystem.h>
 #include <query/FunctionLibrary.h>
-#include <query/Operator.h>
 #include <array/Tile.h>
 #include <array/TileIteratorAdaptors.h>
 #include <util/Platform.h>
-#include <util/Network.h>
 #include <array/SinglePassArray.h>
 #include <array/SynchableArray.h>
 #include <array/PinBuffer.h>
@@ -80,7 +78,7 @@ public:
     //Mutex _mutex;
     //size_t _cacheSize;
 
-    static void materialize(const std::shared_ptr<Query>& query, MemChunk& materializedChunk, 
+    static void materialize(const std::shared_ptr<Query>& query, MemChunk& materializedChunk,
                             ConstChunk const& chunk, size_t const attrSize);
 
     //std::shared_ptr<MemChunk> getMaterializedChunk(ConstChunk const& inputChunk);
@@ -97,32 +95,37 @@ public:
         bool setPosition(Coordinates const& pos) override;
         void restart() override;
 
-        ArrayIterator(DeRLEArray& arr, AttributeID attrID, std::shared_ptr<ConstArrayIterator> input);
+        ArrayIterator(DeRLEArray& arr,
+                      AttributeDesc const& attrDesc,
+                      std::shared_ptr<ConstArrayIterator> input);
 
-    private: 
+    private:
         bool _isEmptyTag;
         size_t _attrSize;
     };
 
     DeRLEArray(std::shared_ptr<Array> input, std::shared_ptr<Query>const& query);
 
-    virtual DelegateArrayIterator* createArrayIterator(AttributeID id) const;
+    DelegateArrayIterator* createArrayIterator(AttributeDesc const& attrDesc) const override;
 };
 
-DeRLEArray::ArrayIterator::ArrayIterator(DeRLEArray& arr, AttributeID attrID, std::shared_ptr<ConstArrayIterator> input):
-    DelegateArrayIterator(arr, attrID, input),
+DeRLEArray::ArrayIterator::ArrayIterator(DeRLEArray& arr,
+                                         AttributeDesc const& attrDesc,
+                                         std::shared_ptr<ConstArrayIterator> input)
+    :
+    DelegateArrayIterator(arr, attrDesc, input),
     _array(arr),
     _chunkToReturn(0),
     _isEmptyTag(false),
     _attrSize(0)
 {
     ArrayDesc const& desc = arr.getArrayDesc();
+    AttributeID attrID = attrDesc.getId();
     if(attrID == desc.getAttributes().size()-1)
-    { 
+    {
         _isEmptyTag=true;
     }
-    _attrSize = desc.getAttributes()[attrID].getSize();
-
+    _attrSize = desc.getAttributes().find(attrID)->getSize();
 }
 
 ConstChunk const& DeRLEArray::ArrayIterator::getChunk()
@@ -134,10 +137,10 @@ ConstChunk const& DeRLEArray::ArrayIterator::getChunk()
     ConstChunk const& chunk = inputIterator->getChunk();
     if(_isEmptyTag)
     {
-        //LOG4CXX_INFO(logger, "Forwarding empty tag");       
+        //LOG4CXX_INFO(logger, "Forwarding empty tag");
         return chunk;
     }
-    if (!_materializedChunk) 
+    if (!_materializedChunk)
     {
          _materializedChunk = std::shared_ptr<MemChunk>(new MemChunk());
     }
@@ -166,7 +169,7 @@ void DeRLEArray::ArrayIterator::restart()
 }
 
 DeRLEArray::DeRLEArray(std::shared_ptr<Array> input,
-                       std::shared_ptr<Query>const& query): 
+                       std::shared_ptr<Query>const& query):
     DelegateArray(input->getArrayDesc(), input, true)
 {
     _query = query;
@@ -184,7 +187,7 @@ void DeRLEArray::materialize(const std::shared_ptr<Query>& query,
     std::shared_ptr<ChunkIterator> dst  = materializedChunk.getIterator(query,
                                             ChunkIterator::NO_EMPTY_CHECK|ChunkIterator::SEQUENTIAL_WRITE);
     size_t count = 0;
-    while (!src->end()) 
+    while (!src->end())
     {
         if (!dst->setPosition(src->getPosition()))
         {
@@ -200,7 +203,7 @@ void DeRLEArray::materialize(const std::shared_ptr<Query>& query,
 
 void DeRLEArray::materialize(const std::shared_ptr<Query>& query,
                                     MemChunk& materializedChunk,
-                                    ConstChunk const& chunk, 
+                                    ConstChunk const& chunk,
                                     size_t const attrSize)
 {
     size_t const inputCount = chunk.count();
@@ -211,7 +214,7 @@ void DeRLEArray::materialize(const std::shared_ptr<Query>& query,
     materializedChunk.initialize(chunk);
     materializedChunk.setBitmapChunk((Chunk*)chunk.getBitmapChunk());
     materializedChunk.allocate( chunkOverheadSize + dataSize );
-    char * bufPointer = (char*) materializedChunk.getData();
+    char * bufPointer = static_cast<char*>(materializedChunk.getWriteData());
     ConstRLEPayload::Header* hdr = (ConstRLEPayload::Header*) bufPointer;
     hdr->_magic = RLE_PAYLOAD_MAGIC;
     hdr->_nSegs = 1;
@@ -227,7 +230,7 @@ void DeRLEArray::materialize(const std::shared_ptr<Query>& query,
     ++seg;
     char* dataPtr = reinterpret_cast<char*>(seg);
     std::shared_ptr<ConstChunkIterator> src = chunk.getConstIterator();
-    while (!src->end()) 
+    while (!src->end())
     {
         Value const& v = src->getItem();
         char const* d = reinterpret_cast<char*> (v.data());
@@ -239,9 +242,10 @@ void DeRLEArray::materialize(const std::shared_ptr<Query>& query,
 }
 
 
-DelegateArrayIterator* DeRLEArray::createArrayIterator(AttributeID id) const
+DelegateArrayIterator* DeRLEArray::createArrayIterator(AttributeDesc const& attrDesc) const
 {
-    return new DeRLEArray::ArrayIterator(*(DeRLEArray*)this, id, inputArray->getConstIterator(id));
+    auto self = const_cast<DeRLEArray *>(this);
+    return new DeRLEArray::ArrayIterator(*self, attrDesc, inputArray->getConstIterator(attrDesc));
 }
 
 
@@ -255,7 +259,8 @@ public:
         PhysicalOperator(logicalName, physicalName, parameters, schema)
     {}
 
-    std::shared_ptr< Array> execute(std::vector< std::shared_ptr< Array> >& inputArrays, std::shared_ptr<Query> query)
+    std::shared_ptr<Array>
+    execute(std::vector< std::shared_ptr< Array> >& inputArrays, std::shared_ptr<Query> query)
     {
         shared_ptr<Array>& input = inputArrays[0];
         return shared_ptr<Array>(new DeRLEArray(input, query));
