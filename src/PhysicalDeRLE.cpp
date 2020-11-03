@@ -138,7 +138,7 @@ ConstChunk const& DeRLEArray::ArrayIterator::getChunk()
     }
     if (!_materializedChunk)
     {
-         _materializedChunk = std::shared_ptr<MemChunk>(new MemChunk());
+         _materializedChunk = std::shared_ptr<MemChunk>(new MemChunk(SCIDB_CODE_LOC));
     }
     std::shared_ptr<Query> query(Query::getValidQueryPtr(_array._query));
     DeRLEArray::materialize(query, *_materializedChunk, chunk, _attrSize);
@@ -204,14 +204,14 @@ void DeRLEArray::materialize(const std::shared_ptr<Query>& query,
 {
     size_t const inputCount = chunk.count();
     size_t const dataSize = attrSize * inputCount;
-    size_t const chunkOverheadSize = sizeof(ConstRLEPayload::Header) +
-                                     2 * sizeof(ConstRLEPayload::Segment);
+    size_t const chunkOverheadSize = sizeof(ConstRLEPayload::PayloadHeader) +
+                                     2 * sizeof(PayloadSegment);
     //LOG4CXX_INFO(logger, "In Materialize count " <<inputCount << " size " << attrSize );
     materializedChunk.initialize(chunk);
     materializedChunk.setBitmapChunk((Chunk*)chunk.getBitmapChunk());
-    materializedChunk.allocate( chunkOverheadSize + dataSize );
+    materializedChunk.allocate( chunkOverheadSize + dataSize, AllocType::memChunk_data, SCIDB_CODE_LOC );
     char * bufPointer = (char*) materializedChunk.getWriteData();
-    ConstRLEPayload::Header* hdr = (ConstRLEPayload::Header*) bufPointer;
+    ConstRLEPayload::PayloadHeader* hdr = (ConstRLEPayload::PayloadHeader*) bufPointer;
     hdr->_magic = RLE_PAYLOAD_MAGIC;
     hdr->_nSegs = 1;
     hdr->_elemSize = attrSize;
@@ -219,10 +219,10 @@ void DeRLEArray::materialize(const std::shared_ptr<Query>& query,
     hdr->_varOffs = 0;
     hdr->_isBoolean = 0;
     ::memset(&hdr->_pad[0], 0, sizeof(hdr->_pad));
-    ConstRLEPayload::Segment* seg = (ConstRLEPayload::Segment*) (hdr+1);
-    *seg =  ConstRLEPayload::Segment(0,0,false,false);
+    PayloadSegment* seg = (PayloadSegment*) (hdr+1);
+    *seg =  PayloadSegment(0,0,false,false);
     ++seg;
-    *seg =  ConstRLEPayload::Segment(inputCount, inputCount,false,false);
+    *seg =  PayloadSegment(inputCount, inputCount,false,false);
     ++seg;
     char* dataPtr = reinterpret_cast<char*>(seg);
     std::shared_ptr<ConstChunkIterator> src = chunk.getConstIterator();
@@ -240,7 +240,7 @@ void DeRLEArray::materialize(const std::shared_ptr<Query>& query,
 
 DelegateArrayIterator* DeRLEArray::createArrayIterator(AttributeDesc& id) const
 {
-    return new DeRLEArray::ArrayIterator(*(DeRLEArray*)this, id, inputArray->getConstIterator(id));
+    return new DeRLEArray::ArrayIterator(*(DeRLEArray*)this, id, getPipe(0)->getConstIterator(id));
 }
 
 
