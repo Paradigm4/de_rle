@@ -5,20 +5,20 @@
 * Copyright (C) 2008-2016 SciDB, Inc.
 * All Rights Reserved.
 *
-* accelerated_io_tools is a plugin for SciDB, an Open Source Array DBMS maintained
+* de_rle is a plugin for SciDB, an Open Source Array DBMS maintained
 * by Paradigm4. See http://www.paradigm4.com/
 *
-* accelerated_io_tools is free software: you can redistribute it and/or modify
+* de_rle is free software: you can redistribute it and/or modify
 * it under the terms of the AFFERO GNU General Public License as published by
 * the Free Software Foundation.
 *
-* accelerated_io_tools is distributed "AS-IS" AND WITHOUT ANY WARRANTY OF ANY KIND,
+* de_rle is distributed "AS-IS" AND WITHOUT ANY WARRANTY OF ANY KIND,
 * INCLUDING ANY IMPLIED WARRANTY OF MERCHANTABILITY,
 * NON-INFRINGEMENT, OR FITNESS FOR A PARTICULAR PURPOSE. See
 * the AFFERO GNU General Public License for the complete license terms.
 *
 * You should have received a copy of the AFFERO GNU General Public License
-* along with accelerated_io_tools.  If not, see <http://www.gnu.org/licenses/agpl-3.0.html>
+* along with de_rle.  If not, see <http://www.gnu.org/licenses/agpl-3.0.html>
 *
 * END_COPYRIGHT
 */
@@ -105,7 +105,7 @@ public:
 
     DeRLEArray(std::shared_ptr<Array> input, std::shared_ptr<Query>const& query);
 
-    virtual DelegateArrayIterator* createArrayIterator(AttributeDesc& id) const;
+    DelegateArrayIterator* createArrayIterator(const AttributeDesc& id) const override;
 };
 
 DeRLEArray::ArrayIterator::ArrayIterator(DeRLEArray& arr, const AttributeDesc& attrID, const std::shared_ptr<ConstArrayIterator> input):
@@ -120,7 +120,7 @@ DeRLEArray::ArrayIterator::ArrayIterator(DeRLEArray& arr, const AttributeDesc& a
     {
         _isEmptyTag=true;
     }
-    _attrSize = desc.getSize();
+    _attrSize = attrID.getSize();
 
 }
 
@@ -238,7 +238,7 @@ void DeRLEArray::materialize(const std::shared_ptr<Query>& query,
 }
 
 
-DelegateArrayIterator* DeRLEArray::createArrayIterator(AttributeDesc& id) const
+DelegateArrayIterator* DeRLEArray::createArrayIterator(const AttributeDesc& id) const
 {
     return new DeRLEArray::ArrayIterator(*(DeRLEArray*)this, id, getPipe(0)->getConstIterator(id));
 }
