@@ -5,20 +5,20 @@
 * Copyright (C) 2008-2016 SciDB, Inc.
 * All Rights Reserved.
 *
-* de_rle is a plugin for SciDB, an Open Source Array DBMS maintained
+* accelerated_io_tools is a plugin for SciDB, an Open Source Array DBMS maintained
 * by Paradigm4. See http://www.paradigm4.com/
 *
-* de_rle is free software: you can redistribute it and/or modify
+* accelerated_io_tools is free software: you can redistribute it and/or modify
 * it under the terms of the AFFERO GNU General Public License as published by
 * the Free Software Foundation.
 *
-* de_rle is distributed "AS-IS" AND WITHOUT ANY WARRANTY OF ANY KIND,
+* accelerated_io_tools is distributed "AS-IS" AND WITHOUT ANY WARRANTY OF ANY KIND,
 * INCLUDING ANY IMPLIED WARRANTY OF MERCHANTABILITY,
 * NON-INFRINGEMENT, OR FITNESS FOR A PARTICULAR PURPOSE. See
 * the AFFERO GNU General Public License for the complete license terms.
 *
 * You should have received a copy of the AFFERO GNU General Public License
-* along with de_rle.  If not, see <http://www.gnu.org/licenses/agpl-3.0.html>
+* along with accelerated_io_tools.  If not, see <http://www.gnu.org/licenses/agpl-3.0.html>
 *
 * END_COPYRIGHT
 */
@@ -138,7 +138,7 @@ ConstChunk const& DeRLEArray::ArrayIterator::getChunk()
     }
     if (!_materializedChunk)
     {
-         _materializedChunk = std::shared_ptr<MemChunk>(new MemChunk(SCIDB_CODE_LOC));
+         _materializedChunk = std::shared_ptr<MemChunk>(new MemChunk());
     }
     std::shared_ptr<Query> query(Query::getValidQueryPtr(_array._query));
     DeRLEArray::materialize(query, *_materializedChunk, chunk, _attrSize);
@@ -204,14 +204,14 @@ void DeRLEArray::materialize(const std::shared_ptr<Query>& query,
 {
     size_t const inputCount = chunk.count();
     size_t const dataSize = attrSize * inputCount;
-    size_t const chunkOverheadSize = sizeof(ConstRLEPayload::PayloadHeader) +
-                                     2 * sizeof(PayloadSegment);
+    size_t const chunkOverheadSize = sizeof(ConstRLEPayload::Header) +
+                                     2 * sizeof(ConstRLEPayload::Segment);
     //LOG4CXX_INFO(logger, "In Materialize count " <<inputCount << " size " << attrSize );
     materializedChunk.initialize(chunk);
     materializedChunk.setBitmapChunk((Chunk*)chunk.getBitmapChunk());
-    materializedChunk.allocate( chunkOverheadSize + dataSize, AllocType::memChunk_data, SCIDB_CODE_LOC );
+    materializedChunk.allocate( chunkOverheadSize + dataSize );
     char * bufPointer = (char*) materializedChunk.getWriteData();
-    ConstRLEPayload::PayloadHeader* hdr = (ConstRLEPayload::PayloadHeader*) bufPointer;
+    ConstRLEPayload::Header* hdr = (ConstRLEPayload::Header*) bufPointer;
     hdr->_magic = RLE_PAYLOAD_MAGIC;
     hdr->_nSegs = 1;
     hdr->_elemSize = attrSize;
@@ -219,10 +219,10 @@ void DeRLEArray::materialize(const std::shared_ptr<Query>& query,
     hdr->_varOffs = 0;
     hdr->_isBoolean = 0;
     ::memset(&hdr->_pad[0], 0, sizeof(hdr->_pad));
-    PayloadSegment* seg = (PayloadSegment*) (hdr+1);
-    *seg =  PayloadSegment(0,0,false,false);
+    ConstRLEPayload::Segment* seg = (ConstRLEPayload::Segment*) (hdr+1);
+    *seg =  ConstRLEPayload::Segment(0,0,false,false);
     ++seg;
-    *seg =  PayloadSegment(inputCount, inputCount,false,false);
+    *seg =  ConstRLEPayload::Segment(inputCount, inputCount,false,false);
     ++seg;
     char* dataPtr = reinterpret_cast<char*>(seg);
     std::shared_ptr<ConstChunkIterator> src = chunk.getConstIterator();
